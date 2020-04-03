@@ -1,11 +1,13 @@
 package at.tugraz.ist.qs2020;
 
 import at.tugraz.ist.qs2020.actorsystem.Message;
+import at.tugraz.ist.qs2020.actorsystem.MessageInDelivery;
 import at.tugraz.ist.qs2020.actorsystem.SimulatedActor;
 import at.tugraz.ist.qs2020.actorsystem.SimulatedActorSystem;
 import at.tugraz.ist.qs2020.messageboard.*;
 import at.tugraz.ist.qs2020.messageboard.clientmessages.*;
 import at.tugraz.ist.qs2020.messageboard.dispatchermessages.Stop;
+import at.tugraz.ist.qs2020.messageboard.dispatchermessages.StopAck;
 import at.tugraz.ist.qs2020.messageboard.messagestoremessages.MessageStoreMessage;
 import at.tugraz.ist.qs2020.messageboard.messagestoremessages.RetrieveFromStore;
 import org.junit.Assert;
@@ -242,6 +244,10 @@ public class MessageBoardTests {
 
         SimulatedActor worker1 = ((InitAck) client1.receivedMessages.remove()).worker;
 
+        // Assertion getDuration for InitCommunicatioj
+        InitCommunication initCom = new InitCommunication(worker1, 1);
+        Assert.assertEquals(initCom.getDuration(), 2);
+
         //Publish Message and check for correct handling
 
         worker1.tell(new Publish(new UserMessage("client1", "Test Msg"), 1));
@@ -360,12 +366,16 @@ public class MessageBoardTests {
         while (client1.receivedMessages.size() == 0)
             system.runFor(1);
 
+        // Assertion getDuration for Like
+        Like testLike = new Like("Client1", 1, 1);
+        Assert.assertEquals(testLike.getDuration(), 1);
+
         opAck = client1.receivedMessages.remove();
         Assert.assertEquals(OperationAck.class, opAck.getClass());
 
         worker1.tell(new Dislike("client1", 1, 1));
         worker1.tell(new RetrieveMessages("client1", 1));
-
+        ;
         while (client1.receivedMessages.size() < 2)
             system.runFor(1);
 
@@ -414,10 +424,11 @@ public class MessageBoardTests {
 
         opFailed = client1.receivedMessages.remove();
         Assert.assertEquals(OperationFailed.class, opFailed.getClass());
-
-
         //-----End Routine
 
+        // Assertion getDuration for RetrieveMessage
+        RetrieveMessages retmsg = new RetrieveMessages("client1", 2);
+        Assert.assertEquals(retmsg.getDuration(), 3);
 
         worker1.tell(new FinishCommunication(1));
 
@@ -490,9 +501,12 @@ public class MessageBoardTests {
 
         Assert.assertEquals(messages.get(0).getLikes().get(0), "TestClient");
 
-        Assert.assertEquals(messages.get(0).getDislikes().get(0), "TestClient");
-
         Assert.assertEquals(messages.get(0).toString(), "client1:LikeTest liked by :TestClient disliked by :TestClient");
+
+        // Assertion getDuration for Dislike
+
+        Dislike dislk = new Dislike("TestClient", 1, 0);
+        Assert.assertEquals(dislk.getDuration(), 1);
 
         // Adding invalid Likes (wrong communication id)
 
@@ -555,6 +569,11 @@ public class MessageBoardTests {
         FinishAck finAck = (FinishAck) finAckMessage;
 
         Assert.assertEquals(Long.valueOf(1), finAck.communicationId);
+
+        // Assertion getDuration for FinishAck
+
+        FinishAck testFin = new FinishAck(1);
+        Assert.assertEquals(testFin.getDuration(), 1);
 
         dispatcher.tell(new Stop());
 
@@ -661,6 +680,11 @@ public class MessageBoardTests {
 
         // Acknowledge communication end
 
+        //  Assertion getDuration for FinishCommunication
+
+        FinishCommunication finishCom = new FinishCommunication(1);
+        Assert.assertEquals(finishCom.getDuration(), 3);
+
         Message finAckMessage1 = client1.receivedMessages.remove();
         Assert.assertEquals(FinishAck.class, finAckMessage1.getClass());
         FinishAck finAck1 = (FinishAck) finAckMessage1;
@@ -727,7 +751,10 @@ public class MessageBoardTests {
         Assert.assertEquals(retrievedMessages.get(0).getMessage(), "Insult");
         Assert.assertEquals(retrievedMessages.get(0).getAuthor(), "client1");
 
+        // Assertion getDuration for FoundMessage
 
+        FoundMessages foundMsg = new FoundMessages(retrievedMessages,1);
+        Assert.assertEquals(foundMsg.getDuration(), 1);
         // Try to report user with wrong communication id
 
         worker2.tell(new Report("client2", -1, "client1"));
@@ -870,6 +897,11 @@ public class MessageBoardTests {
 
         SimulatedActor worker1 = ((InitAck) client1.receivedMessages.remove()).worker;
 
+        // Assertion getDuration for InitAck
+
+        InitAck initA = new InitAck(worker1, 1);
+        Assert.assertEquals(initA.getDuration(), 1);
+
         // client 1 publishes one offensive message
 
         worker1.tell(new Publish(new UserMessage("client1", "Insult"), 1));
@@ -905,6 +937,7 @@ public class MessageBoardTests {
         while (system.getActors().size() > 2)
             system.runFor(1);
         system.stop(dispatcher);
+
     }
 
     @Test
@@ -1045,8 +1078,16 @@ public class MessageBoardTests {
         while (system.getActors().size() > 2)
             system.runFor(1);
         system.stop(dispatcher);
+
+        // Assertion getDuration for Stop & StopAck
+
+        Stop testStop = new Stop();
+        Assert.assertEquals(testStop.getDuration(), 2);
+
+        StopAck testStopAck = new StopAck(worker1);
+        Assert.assertEquals(testStopAck.getDuration(), 2);
     }
+
 
     // TODO: Implement test cases
 }
-
