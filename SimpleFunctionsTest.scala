@@ -1,7 +1,6 @@
 package at.tugraz.ist.qs2020
 
 import at.tugraz.ist.qs2020.simple.SimpleFunctions._
-import org.scalacheck.Prop.True
 //import at.tugraz.ist.qs2020.simple.SimpleFunctionsMutant1._
 import at.tugraz.ist.qs2020.simple.SimpleJavaFunctions
 import org.junit.runner.RunWith
@@ -16,6 +15,8 @@ import org.scalacheck.{Arbitrary, Gen, Properties}
 class SimpleFunctionsTest extends Properties("SimpleFunctionsTest") {
 
   private val nonEmptyIntListGen: Gen[List[Int]] = Gen.nonEmptyListOf(Arbitrary.arbitrary[Int])
+
+  private val nonEmptyIntSetGen: Gen[Set[Int]] = Gen.nonEmptyContainerOf[Set, Int](Arbitrary.arbitrary[Int])
 
   // insertionSort
 
@@ -49,42 +50,68 @@ class SimpleFunctionsTest extends Properties("SimpleFunctionsTest") {
 
   // maximum
 
-  // TODO: max() properties
+  property("maximum: biggest") = forAll(nonEmptyIntListGen) { (xs: List[Int]) =>
+    val maximum = max(xs)
+    xs.nonEmpty ==> xs.indices.forall((i: Int) => xs(i) <= maximum)
+  }
 
   // minimal index
 
-  // TODO: minIndex() properties
+  //this might be redundant
+  property("minimum: valid index") = forAll(nonEmptyIntListGen) { (xs: List[Int]) =>
+    val minimum = minIndex(xs)
+    minimum >= 0 && minimum < xs.length
+  }
+
+  property("minimum: smallest") = forAll(nonEmptyIntListGen) { (xs: List[Int]) =>
+    val minimum = minIndex(xs)
+    xs.nonEmpty ==> xs.indices.forall((i: Int) => xs(i) >= xs(minimum))
+  }
 
   // symmetric difference
 
-  // TODO: symmetricDifference() properties
+  property("symDiff: unique elements") = forAll(nonEmptyIntSetGen, nonEmptyIntSetGen) { (xs: Set[Int], ys: Set[Int]) =>
+    var as  = xs.toList
+    var bs  = ys.toList
 
-  // intersection
-
-  // TODO: intersection() properties
-  property("insertionSort Java: intersection") = forAll { (xs: List[Int], ys: List[Int]) =>
-    var nums: List[Int] = List()
-
-    for (i <- 0 until xs.length - 1)
+    //In case sets are equal make them distinct
+    if (xs.equals(ys))
     {
-      for (j <- 0 until ys.length - 1)
-      {
-        if (xs(i) == ys (j))
-        {
-          if (!nums.contains(xs(i)))
-          {
-            nums = nums ::: List(xs(i))
-          }
-        }
-      }
+      as = List(xs.sum + 1) ::: xs.toList
     }
-    nums.nonEmpty ==> nums.indices.forall((i: Int) => ys.contains(nums(i)) == xs.contains(nums(i)))
+
+    val symDiff = symmetricDifference(xs.toList, ys.toList)
+
+    def count(a: Int, as: List[Int]) = as.count(_ == a)
+
+    as.nonEmpty && bs.nonEmpty ==> symDiff.indices.forall((i: Int) => count(symDiff(i), as) + count(symDiff(i), bs) == 1)
   }
+
+
+  property("intersection: duplicate elements") = forAll(nonEmptyIntSetGen, nonEmptyIntSetGen) { (xs: Set[Int], ys: Set[Int]) =>
+    var as  = xs.toList
+    var bs  = ys.toList
+
+    //In case sets are equal make them distinct
+    if (xs.equals(ys))
+    {
+      as = List(xs.sum + 1) ::: xs.toList
+    }
+
+    val nums = intersection(as, bs)
+
+    def count(a: Int, as: List[Int]) = as.count(_ == a)
+
+    as.nonEmpty && bs.nonEmpty ==> nums.indices.forall((i: Int) =>  {count(nums(i), as) + count(nums(i), bs) == 2})
+  }
+
   // Smallest missing positive integer
 
-  // TODO: smallestMissingPositiveInteger() properties
-  property("insertionSort Java: smallestMissingPositiveInteger") = forAll(nonEmptyIntListGen) { (xs: List[Int]) =>
-    var smallestInt: Int = 1
+  property("smallestMissingPositiveInteger: ") = forAll(nonEmptyIntListGen) { (xs: List[Int]) =>
+
+    val smallestInt = smallestMissingPositiveInteger(xs)
+
+    /*var smallestInt: Int = 1
     var test: Boolean = true
     while (test)
     {
@@ -93,8 +120,19 @@ class SimpleFunctionsTest extends Properties("SimpleFunctionsTest") {
         test = false
       }
       smallestInt = smallestInt + 1
-    }
-    
-    xs.nonEmpty ==> xs.indices.forall((i: Int) => xs(i) > smallestInt)
+    }*/
+
+    //This means that, the list may not contain the smallestMissingInteger, that all elements between 0 and smallestInt must be included in the list if smallInt isn't exactly 1
+    xs.nonEmpty && !xs.contains(smallestInt) && ((1 until smallestInt).toSet.subsetOf(xs.toSet) || smallestInt == 1)
   }
+  // TODO: symmetricDifference() properties
+
+  // intersection
+
+  // TODO: intersection() properties
+
+  // Smallest missing positive integer
+
+  // TODO: smallestMissingPositiveInteger() properties
+
 }
