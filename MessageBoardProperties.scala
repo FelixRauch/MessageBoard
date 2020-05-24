@@ -138,7 +138,7 @@ class MessageBoardProperties extends Properties("MessageBoardProperties") {
 
       }
 
-  property("R3 Like Existing Message") =
+  property("R3 Like/Dislike Existing Message") =
     forAll { (author: String, message: String) =>
       val sut = new SUTMessageBoard
       sut.getDispatcher.tell(new InitCommunication(sut.getClient, sut.getCommId))
@@ -165,6 +165,53 @@ class MessageBoardProperties extends Properties("MessageBoardProperties") {
           sut.getSystem.runFor(1)
         val reply3 = sut.getClient.receivedMessages.remove()
 
+
+      //println("publishedMessages: " + publishedMessages.)
+
+      // here would be a worker.tell, e.g. in a loop
+
+      worker.tell(new FinishCommunication(sut.getCommId))
+      while (sut.getClient.receivedMessages.isEmpty)
+        sut.getSystem.runFor(1)
+      sut.getClient.receivedMessages.remove()
+
+      // here would be a check
+      classify(message.length <= MAX_MESSAGE_LENGTH, "valid message length", "invalid message length") {
+        (reply1.isInstanceOf[OperationAck] == (message.length() <= MAX_MESSAGE_LENGTH)) && (reply2.isInstanceOf[OperationAck] == (message.length() <= MAX_MESSAGE_LENGTH)) && (reply3.isInstanceOf[OperationAck] == (message.length() <= MAX_MESSAGE_LENGTH))
+      }
+    }
+  property("R3 Like/Dislike Existing Message twice") =
+    forAll { (author: String, message: String) =>
+      val sut = new SUTMessageBoard
+      sut.getDispatcher.tell(new InitCommunication(sut.getClient, sut.getCommId))
+      while (sut.getClient.receivedMessages.isEmpty)
+        sut.getSystem.runFor(1)
+      val initAck = sut.getClient.receivedMessages.remove.asInstanceOf[InitAck]
+      val worker: SimulatedActor = initAck.worker
+
+      var publishedMessages = List[String]()
+
+      val msg = new UserMessage(author, message)
+      worker.tell(new Publish(msg, sut.getCommId))
+      while (sut.getClient.receivedMessages.isEmpty)
+        sut.getSystem.runFor(1)
+      val reply1 = sut.getClient.receivedMessages.remove()
+
+      worker.tell(new Like("TestClient", sut.getCommId, msg.getMessageId))
+      worker.tell(new Like("TestClient", sut.getCommId, msg.getMessageId))
+      while (sut.getClient.receivedMessages.size() < 2)
+        sut.getSystem.runFor(1)
+      val reply2 = sut.getClient.receivedMessages.remove()
+      val reply2_2 = sut.getClient.receivedMessages.remove()
+      assert(reply2_2.isInstanceOf[OperationFailed])
+
+      worker.tell(new Dislike("TestClient", sut.getCommId, msg.getMessageId))
+      worker.tell(new Dislike("TestClient", sut.getCommId, msg.getMessageId))
+      while (sut.getClient.receivedMessages.size() < 2)
+        sut.getSystem.runFor(1)
+      val reply3 = sut.getClient.receivedMessages.remove()
+      val reply3_2 = sut.getClient.receivedMessages.remove()
+      assert(reply3_2.isInstanceOf[OperationFailed])
 
       //println("publishedMessages: " + publishedMessages.)
 
