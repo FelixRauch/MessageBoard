@@ -1,0 +1,8 @@
+Mutant-No: Sequence to kill [e.g. Publish(Bob, msg_w_9ch), Report(Laura, Bob), Like(Bob, msg_w_9ch, Alice)] from ARG_0 or NO_MUTANT if correct
+1: Actions(ModelMessageBoard([], [], fail, not banned),List(Like(Bob,msg_w_10ch, Bob)),List())
+2: Actions(ModelMessageBoard([], [], fail, not banned),List(Retrieve(Alice)),List())
+3: NO_MUTANT
+4: Actions(ModelMessageBoard([], [], fail, not banned),List(Publish(Bob, msg_w_11ch_)),List())
+5: Actions(ModelMessageBoard([], [], fail, not banned),List(Retrieve(Alice)),List())
+81: NOT_DONE
+82: NOT_DONE

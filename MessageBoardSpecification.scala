@@ -8,6 +8,7 @@ import at.tugraz.ist.qs2020.messageboard.clientmessages._
 import org.scalacheck.commands.Commands
 import org.scalacheck.{Gen, Prop}
 
+import scala.collection.mutable.ListBuffer
 import scala.jdk.CollectionConverters._
 import scala.util.Try
 
@@ -29,7 +30,7 @@ object MessageBoardSpecification extends Commands {
 
   override def genInitialState: Gen[State] = ModelMessageBoard(Nil, Nil, lastCommandSuccessful = false, userBanned = false)
 
-  override def genCommand(state: State): Gen[Command] = Gen.oneOf(genPublish, genLike, genDislike, genReport, genRetrieve)
+  override def genCommand(state: State): Gen[Command] = Gen.oneOf(genPublish, genLike, genDislike, genReport , genRetrieve)
 
   val genAuthor: Gen[String] = Gen.oneOf("Alice", "Bob")
   val genReporter: Gen[String] = Gen.oneOf("Alice", "Bob", "Lena", "Lukas", "Simone", "Charles", "Gracie", "Patrick", "Laura", "Leon")
@@ -45,6 +46,9 @@ object MessageBoardSpecification extends Commands {
 
     def run(sut: Sut): Result = {
       // TODO
+
+      //println("run: " + message + "message length: " + message.length)
+
       sut.getDispatcher.tell(new InitCommunication(sut.getClient, sut.getCommId))
       while (sut.getClient.receivedMessages.isEmpty)
         sut.getSystem.runFor(1)
@@ -54,19 +58,53 @@ object MessageBoardSpecification extends Commands {
       worker.tell(new Publish(new UserMessage(author, message), sut.getCommId))
       while (sut.getClient.receivedMessages.isEmpty)
         sut.getSystem.runFor(1)
-      val reply = sut.getClient.receivedMessages.remove()
+      val result = sut.getClient.receivedMessages.remove()
 
       worker.tell(new FinishCommunication(sut.getCommId))
       while (sut.getClient.receivedMessages.isEmpty)
         sut.getSystem.runFor(1)
       sut.getClient.receivedMessages.remove.asInstanceOf[FinishAck]
       // throw new java.lang.UnsupportedOperationException("Not implemented yet.")
-      reply
+      result
     }
 
     def nextState(state: State): State = {
-      // TODO
-      state
+
+      //R1 max message length
+
+      if (state.messages.exists(m => m.author == author && m.message == message)) {
+        //println("uh")
+        return state.copy(
+          lastCommandSuccessful = false,
+          userBanned = false
+        )
+      }
+
+
+      //R2 no duplicate messages by same user
+
+
+      if (message.length > MAX_MESSAGE_LENGTH) {
+        //println("masd: " + message + "message length: " + message.length)
+        return state.copy(
+          lastCommandSuccessful = false,
+          userBanned = false
+        )
+      }
+
+      if (state.reports.count(r => r.reportedClientName == author) >= USER_BLOCKED_AT_COUNT) {
+        return state.copy(
+          lastCommandSuccessful = false,
+          userBanned = true
+        )
+      }
+
+      state.copy(
+        lastCommandSuccessful = true,
+        userBanned = false,
+        messages = ModelUserMessage(author, message, List[String](), List[String]()) :: state.messages
+      )
+
     }
 
     override def preCondition(state: State): Boolean = true
@@ -75,7 +113,9 @@ object MessageBoardSpecification extends Commands {
       if (result.isSuccess) {
         val reply: Message = result.get
         val newState: State = nextState(state)
-        false // TODO
+        //println("reply: " + reply.isInstanceOf[OperationAck])
+        //println("newState: " + newState.lastCommandSuccessful)
+        (reply.isInstanceOf[OperationAck] == newState.lastCommandSuccessful)// TODO
       } else {
         false
       }
@@ -101,29 +141,72 @@ object MessageBoardSpecification extends Commands {
       val initAck = sut.getClient.receivedMessages.remove.asInstanceOf[InitAck]
       val worker: SimulatedActor = initAck.worker
 
-      val msg = new UserMessage(author, message)
-      worker.tell(new Publish(msg, sut.getCommId))
+      worker.tell(new RetrieveMessages(author, sut.getCommId))
       while (sut.getClient.receivedMessages.isEmpty)
         sut.getSystem.runFor(1)
-      val reply = sut.getClient.receivedMessages.remove()
+      val retrievedMessages: List[UserMessage] = sut.getClient.receivedMessages.remove().asInstanceOf[FoundMessages].messages.asScala.toList
 
-      worker.tell(new Like("TestClient", sut.getCommId, msg.getMessageId))
+      val msg: Option[UserMessage] = retrievedMessages.find(m => m.getMessage == message)
+
+      val msgId = if(msg.getOrElse("not found") == "not found") -10 else msg.get.getMessageId
+
+      worker.tell(new Like(likeName, sut.getCommId, msgId))
       while (sut.getClient.receivedMessages.isEmpty)
         sut.getSystem.runFor(1)
-      val reply1 = sut.getClient.receivedMessages.remove()
+      val result = sut.getClient.receivedMessages.remove()
       worker.tell(new FinishCommunication(sut.getCommId))
 
       while (sut.getClient.receivedMessages.isEmpty)
         sut.getSystem.runFor(1)
       sut.getClient.receivedMessages.remove.asInstanceOf[FinishAck]
       // throw new java.lang.UnsupportedOperationException("Not implemented yet.")
-      reply1
-     //  throw new java.lang.UnsupportedOperationException("Not implemented yet.")
+      result
+      //  throw new java.lang.UnsupportedOperationException("Not implemented yet.")
     }
 
     def nextState(state: State): State = {
-      // TODO
-      state
+
+      //R3 Message exists
+
+      if (!state.messages.exists(m => m.author == author && m.message == message)) {
+        //println("doesn't exist")
+        return state.copy(
+          lastCommandSuccessful = false,
+          userBanned = false
+        )
+      }
+
+
+      //R4 not already liked
+
+
+      if (state.messages.exists(m => m.author == author && m.message == message && m.likes.contains(likeName))) {
+        //println("already liked")
+        return state.copy(
+          lastCommandSuccessful = false,
+          userBanned = false
+        )
+      }
+
+      //R7 not banned
+
+      if (state.reports.count(r => r.reportedClientName == likeName) >= USER_BLOCKED_AT_COUNT) {
+        return state.copy(
+          lastCommandSuccessful = false,
+          userBanned = true
+        )
+      }
+
+      state.copy(
+        lastCommandSuccessful = true,
+        userBanned = false,
+        messages = state.messages.map( m =>
+          if (m.author == author && m.message == message) {
+            ModelUserMessage(m.author, m.message, m.likes ::: List[String](likeName), m.dislikes)}
+          else m )
+        //messages = ModelUserMessage(author, message, List[String](), List[String]()) :: state.messages
+      )
+
     }
 
     override def preCondition(state: State): Boolean = true
@@ -132,7 +215,9 @@ object MessageBoardSpecification extends Commands {
       if (result.isSuccess) {
         val reply: Message = result.get
         val newState: State = nextState(state)
-        false // TODO
+        //println("reply: " + reply.isInstanceOf[OperationAck])
+        //println("newState: " + newState.lastCommandSuccessful)
+        (reply.isInstanceOf[OperationAck] == newState.lastCommandSuccessful)
       } else {
         false
       }
@@ -157,29 +242,71 @@ object MessageBoardSpecification extends Commands {
       val initAck = sut.getClient.receivedMessages.remove.asInstanceOf[InitAck]
       val worker: SimulatedActor = initAck.worker
 
-      val msg = new UserMessage(author, message)
-      worker.tell(new Publish(msg, sut.getCommId))
+      worker.tell(new RetrieveMessages(author, sut.getCommId))
       while (sut.getClient.receivedMessages.isEmpty)
         sut.getSystem.runFor(1)
-      val reply = sut.getClient.receivedMessages.remove()
+      val retrievedMessages: List[UserMessage] = sut.getClient.receivedMessages.remove().asInstanceOf[FoundMessages].messages.asScala.toList
 
-      worker.tell(new Dislike("TestClient", sut.getCommId, msg.getMessageId))
+      val msg: Option[UserMessage] = retrievedMessages.find(m => m.getMessage == message)
+
+      val msgId = if(msg.getOrElse("not found") == "not found") -1 else msg.get.getMessageId
+
+      worker.tell(new Dislike(dislikeName, sut.getCommId, msgId))
       while (sut.getClient.receivedMessages.isEmpty)
         sut.getSystem.runFor(1)
-      val reply1 = sut.getClient.receivedMessages.remove()
+      val result = sut.getClient.receivedMessages.remove()
       worker.tell(new FinishCommunication(sut.getCommId))
 
       while (sut.getClient.receivedMessages.isEmpty)
         sut.getSystem.runFor(1)
       sut.getClient.receivedMessages.remove.asInstanceOf[FinishAck]
       // throw new java.lang.UnsupportedOperationException("Not implemented yet.")
-      reply1
-    // throw new java.lang.UnsupportedOperationException("Not implemented yet.")
+      result
     }
 
     def nextState(state: State): State = {
-      // TODO
-      state
+
+      //R3 Message exists
+
+      if (!state.messages.exists(m => m.author == author && m.message == message)) {
+        //println("doesn't exist")
+        return state.copy(
+          lastCommandSuccessful = false,
+          userBanned = false
+        )
+      }
+
+
+      //R4 not already liked
+
+
+      if (state.messages.exists(m => m.author == author && m.message == message && m.dislikes.contains(dislikeName))) {
+        //println("already liked")
+        return state.copy(
+          lastCommandSuccessful = false,
+          userBanned = false
+        )
+      }
+
+      //R7 not banned
+
+      if (state.reports.count(r => r.reportedClientName == dislikeName) >= USER_BLOCKED_AT_COUNT) {
+        return state.copy(
+          lastCommandSuccessful = false,
+          userBanned = true
+        )
+      }
+
+      state.copy(
+        lastCommandSuccessful = true,
+        userBanned = false,
+        messages = state.messages.map( m =>
+          if (m.author == author && m.message == message) {
+            ModelUserMessage(m.author, m.message, m.likes, m.dislikes ::: List[String](dislikeName))}
+          else m )
+        //messages = ModelUserMessage(author, message, List[String](), List[String]()) :: state.messages
+      )
+
     }
 
     override def preCondition(state: State): Boolean = true
@@ -188,7 +315,9 @@ object MessageBoardSpecification extends Commands {
       if (result.isSuccess) {
         val reply: Message = result.get
         val newState: State = nextState(state)
-        false // TODO
+        //println("reply: " + reply.isInstanceOf[OperationAck])
+        //println("newState: " + newState.lastCommandSuccessful)
+        (reply.isInstanceOf[OperationAck] == newState.lastCommandSuccessful) // TODO
       } else {
         false
       }
@@ -288,7 +417,14 @@ object MessageBoardSpecification extends Commands {
       worker.tell(new RetrieveMessages(author, sut.getCommId))
       while (sut.getClient.receivedMessages.isEmpty)
         sut.getSystem.runFor(1)
-      val result = sut.getClient.receivedMessages.remove.asInstanceOf[RetrieveCommandResult]
+      val operation = sut.getClient.receivedMessages.remove.asInstanceOf[FoundMessages]
+
+      var msgList: List[String] = List()
+
+
+      operation.messages.forEach(m => msgList = msgList ::: List[String](m.getMessage))
+
+      val result = RetrieveCommandResult(success = true, msgList)
 
       worker.tell(new FinishCommunication(sut.getCommId))
       while (sut.getClient.receivedMessages.isEmpty)
@@ -309,7 +445,9 @@ object MessageBoardSpecification extends Commands {
     override def postCondition(state: State, result: Try[Result]): Prop = {
       if (result.isSuccess) {
         val reply: Result = result.get
-        false // TODO
+        val newState: State = nextState(state)
+        reply.success && reply.messages.forall(m => newState.messages.exists(m1 => m == m1.message && m1.author == author))// TODO
+        //newState.messages.foreach(m => m.author == author && reply.messages.contains(m.message))
       } else {
         false
       }
